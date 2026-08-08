@@ -1,0 +1,89 @@
+version: "3.9"
+
+# CinemaSeat docker-compose
+# Runs: api (Spring Boot), postgres, gateway (provided mock), frontend (nginx).
+#
+# From a clean clone:
+#   cp .env.example .env
+#   docker compose up --build
+#
+# Services reach each other by service name. The backend talks to:
+#   - postgres:5432 via DATABASE_URL
+#   - http://gateway:9000 via GATEWAY_URL
+#   - and exposes its callback URL to the gateway as http://api:3000/api/payments/callback
+#     (NEVER localhost, because the gateway container cannot reach the host that way).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cinemaseat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    image: asifmahmoud414/mock-gateway:latest
+    container_name: cinemaseat-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cinemaseat-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
+      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_SECRET: ${GATEWAY_SECRET}
+      # The gateway must be able to reach the backend by Docker service name.
+      # API_PORT must match the exposed port below.
+      API_PORT: ${API_PORT}
+      CALLBACK_URL: http://api:${API_PORT}/api/payments/callback
+    ports:
+      - "${API_PORT:-3000}:${API_PORT:-3000}"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: cinemaseat-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    # nginx serves the SPA and reverse-proxies /api/* to the backend service.
+    # This keeps the browser on the same origin and avoids CORS surprises.
+
+volumes:
+  postgres-data:
