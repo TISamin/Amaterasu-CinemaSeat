@@ -1,6 +1,0 @@
-com\cinemaseat\booking\BookingStateServiceTest.class
-com\cinemaseat\show\SeatMapLazyExpirationIT.class
-com\cinemaseat\showseat\ShowSeatConcurrencyIT.class
-com\cinemaseat\showseat\ShowSeatConcurrencyUnitTest.class
-com\cinemaseat\showseat\ShowSeatHoldIT.class
-com\cinemaseat\showseat\ShowSeatConcurrencyUnitTest$SeatSlot.class
