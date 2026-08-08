@@ -8,17 +8,21 @@
 //
 // Run from OUTSIDE the application machine:
 //   BASE_URL=https://cinemaseat.example.com \
-//   SHOW_ID=101 SEAT_ID=501 \
+//   SHOW_ID=101 SHOW_SEAT_ID=501 \
 //   TTL_SECONDS=10 \
 //   k6 run tests/load/scenario-b.js
+//
+// NOTE: the path variable is the show_seats.id (Agent 1's controller uses
+// {showSeatId}). The SHOW_SEAT_ID env var is the canonical name; SEAT_ID
+// is accepted as a back-compat alias.
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const SHOW_ID = __ENV.SHOW_ID || '101';
-const SEAT_ID = __ENV.SEAT_ID || '501';
+const SHOW_SEAT_ID = __ENV.SHOW_SEAT_ID || __ENV.SEAT_ID || '501';
 const TTL_SECONDS = Number(__ENV.TTL_SECONDS || 10);
 
 const aSuccess = new Counter('a_hold_success');
@@ -33,7 +37,7 @@ export const options = {
 };
 
 function hold(userId) {
-  const url = `${BASE_URL}/api/shows/${SHOW_ID}/seats/${SEAT_ID}/hold`;
+  const url = `${BASE_URL}/api/shows/${SHOW_ID}/seats/${SHOW_SEAT_ID}/hold`;
   return http.post(url, JSON.stringify({ userId }), {
     headers: { 'Content-Type': 'application/json' },
   });
@@ -63,7 +67,7 @@ export default function () {
     scenario: 'B',
     base_url: BASE_URL,
     show_id: SHOW_ID,
-    seat_id: SEAT_ID,
+    seat_id: SHOW_SEAT_ID,
     ttl_seconds: TTL_SECONDS,
     elapsed_ms: Date.now() - start,
     user_a: { status: a.status, body: a.body },

@@ -5,8 +5,8 @@
 //                                     to the backend on the Compose network
 //                                     (same origin, no CORS).
 //   - Local dev (Vite):    "/api"  -> vite.config.js dev-server proxy forwards to
-//                                     http://localhost:3000
-//   - Standalone preview:  "http://localhost:3000"  -> absolute origin
+//                                     http://localhost:8080
+//   - Standalone preview:  "http://localhost:8080"  -> absolute origin
 //
 // Anything that starts with "/" is treated as same-origin and joined with
 // the current page URL (so it works whether the SPA is served from "/" or
@@ -65,8 +65,8 @@ export const api = {
     return jsonFetch(this.url(`/api/shows/${showId}/seats`));
   },
 
-  holdSeat(showId, seatId, userId) {
-    return jsonFetch(this.url(`/api/shows/${showId}/seats/${seatId}/hold`), {
+  holdSeat(showId, showSeatId, userId) {
+    return jsonFetch(this.url(`/api/shows/${showId}/seats/${showSeatId}/hold`), {
       method: 'POST',
       body: JSON.stringify({ userId }),
     });

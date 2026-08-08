@@ -17,7 +17,7 @@ It does not redefine API or DB contracts — see `API_CONTRACT.md` and `DATABASE
 ┌──────────────────────────────────────────────────────────────┐
 │                Frontend container (nginx)                    │
 │   - Serves /usr/share/nginx/html (SPA)                      │
-│   - Reverse-proxies /api/*  →  http://api:3000               │
+│   - Reverse-proxies /api/*  →  http://api:8080               │
 └──────────────────────────┬───────────────────────────────────┘
                            │ Docker Compose internal network
                            ▼
@@ -43,7 +43,7 @@ It does not redefine API or DB contracts — see `API_CONTRACT.md` and `DATABASE
 │   - Flyway migrations  │    │   - POST /charge                 │
 │   - V2 seed data       │    │   - POST /otp/send, /otp/verify  │
 │   - UNIQUE constraints │    │   - async callback to:          │
-│     (show_id,seat_id)  │    │       http://api:3000/api/       │
+│     (show_id,seat_id)  │    │       http://api:8080/api/       │
 │     booking_ref        │    │       payments/callback          │
 │     payment_id         │    └──────────────────────────────────┘
 │     event_id           │
@@ -132,13 +132,13 @@ All configuration via environment variables. No secrets are committed. See `.env
 | `HOLD_TTL_SECONDS`   | api (hold + expiration | never hardcoded                              |
 | `GATEWAY_URL`        | api                    | `http://gateway:9000` — service name         |
 | `GATEWAY_SECRET`     | api                    | HMAC verification (bonus)                    |
-| `CALLBACK_URL`       | api → gateway          | `http://api:3000/api/payments/callback`      |
+| `CALLBACK_URL`       | api → gateway          | `http://api:8080/api/payments/callback`      |
 
 ---
 
 ## 5. Frontend / backend integration
 
-The browser never speaks to Postgres or the gateway. It talks to the backend through `/api/*`, which nginx in the frontend container proxies to `http://api:3000`. This:
+The browser never speaks to Postgres or the gateway. It talks to the backend through `/api/*`, which nginx in the frontend container proxies to `http://api:8080`. This:
 
 - avoids CORS preflights,
 - keeps the backend hostname abstract,

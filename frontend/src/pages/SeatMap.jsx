@@ -46,7 +46,11 @@ export default function SeatMap() {
     if (!selected) return;
     setBusy(true);
     setErr(null);
-    const r = await api.holdSeat(showId, selected.seatId, getUserId());
+    // Agent 1's hold endpoint is `/api/shows/{showId}/seats/{showSeatId}/hold`
+    // and the {showSeatId} path variable is the show_seats.id (the same id
+    // returned in SeatMap JSON under `id`), NOT the seat-definition id (which
+    // is the seat row's seatId field). Pass `selected.id` to the API.
+    const r = await api.holdSeat(showId, selected.id, getUserId());
     setBusy(false);
     if (r.ok) {
       navigate(`/bookings/${r.body.bookingRef}`);

@@ -3,19 +3,20 @@
 //
 // Run from OUTSIDE the application machine against the deployed URL:
 //   BASE_URL=https://cinemaseat.example.com \
-//   SHOW_ID=101 SEAT_ID=501 \
+//   SHOW_ID=101 SHOW_SEAT_ID=501 \
 //   k6 run tests/load/scenario-a.js
 //
-// If the backend gates holds by userId, set USER_ID to a stable value (or
-// omit it to let each VU generate a unique one).
+// NOTE: SEAT_* variable is the show_seats.id (the Agent 1 path variable),
+// NOT the seat-definition id. See docs/API_CONTRACT.md and the
+// HoldController mapping in backend/src/main/java/com/cinemaseat/web/.
 
 import http from 'k6/http';
 import { check } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const SHOW_ID = __ENV.SHOW_ID || '101';
-const SEAT_ID = __ENV.SEAT_ID || '501';
+const SHOW_SEAT_ID = __ENV.SHOW_SEAT_ID || __ENV.SEAT_ID || '501';
 const USER_ID = __ENV.USER_ID || '';
 
 const success = new Counter('holds_success');
@@ -43,7 +44,7 @@ export default function () {
     ? JSON.stringify({ userId: USER_ID })
     : JSON.stringify({ userId: `vu-${__VU}-${__ITER}` });
 
-  const url = `${BASE_URL}/api/shows/${SHOW_ID}/seats/${SEAT_ID}/hold`;
+  const url = `${BASE_URL}/api/shows/${SHOW_ID}/seats/${SHOW_SEAT_ID}/hold`;
   const res = http.post(url, body, {
     headers: { 'Content-Type': 'application/json' },
   });
@@ -69,7 +70,7 @@ export function handleSummary(data) {
     scenario: 'A',
     base_url: BASE_URL,
     show_id: SHOW_ID,
-    seat_id: SEAT_ID,
+    seat_id: SHOW_SEAT_ID,
     counts: {
       success: data.metrics.holds_success ? data.metrics.holds_success.values.count : 0,
       conflict_409: data.metrics.holds_conflict ? data.metrics.holds_conflict.values.count : 0,

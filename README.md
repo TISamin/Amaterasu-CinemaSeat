@@ -16,7 +16,7 @@ The full engineering specification lives in `docs/` and the master spec handed d
                │ /api/* (same origin, nginx reverse proxy)
                ▼
 ┌──────────────────────────────┐
-│  Spring Boot API (api)       │   port 3000
+│  Spring Boot API (api)       │   port 8080
 │  - Catalog / Shows / Seats   │
 │  - Hold (DB row-level lock)  │
 │  - /pay (async)              │
@@ -34,7 +34,7 @@ The full engineering specification lives in `docs/` and the master spec handed d
 
 - **Postgres** is the source of truth for seat, booking, and payment state.
 - **api ↔ gateway** traffic uses the Docker Compose service name `gateway` (NEVER `localhost` from inside containers).
-- The gateway calls back to **`http://api:3000/api/payments/callback`** so the backend is reachable on the Compose network.
+- The gateway calls back to **`http://api:8080/api/payments/callback`** so the backend is reachable on the Compose network.
 
 Detailed diagram: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -70,8 +70,8 @@ That is the entire setup. Postgres initializes via Flyway on backend boot, seed 
 | What          | URL                                  |
 | ------------- | ------------------------------------ |
 | Frontend SPA  | http://localhost:8080                |
-| Backend API   | http://localhost:3000                |
-| Health        | http://localhost:3000/health         |
+| Backend API   | http://localhost:8080                |
+| Health        | http://localhost:8080/health         |
 | Gateway       | http://localhost:9000                |
 
 ---
@@ -108,7 +108,7 @@ The full contract is in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). Quick ma
 | GET    | `/api/movies`                              | List movies |
 | GET    | `/api/movies/{movieId}/shows`              | Showtimes for a movie |
 | GET    | `/api/shows/{showId}/seats`                | Live seat map |
-| POST   | `/api/shows/{showId}/seats/{seatId}/hold`  | Atomically acquire seat (DB row-level lock) |
+| POST   | `/api/shows/{showId}/seats/{showSeatId}/hold`  | Atomically acquire seat (DB row-level lock); `{showSeatId}` is the `show_seats.id` (the same field as `id` in the seat-map JSON), not the seat-definition id |
 | GET    | `/api/bookings/{bookingRef}`               | Current booking + payment state |
 | POST   | `/api/bookings/{bookingRef}/pay`           | Returns 202 quickly; gateway decides final state |
 | POST   | `/api/payments/callback`                   | Idempotent on `event_id` |
@@ -239,7 +239,7 @@ Run from a separate machine — never on the app host.
 
 ```bash
 BASE_URL=https://<deployed-api>
-SHOW_ID=101 SEAT_ID=501 \
+SHOW_ID=101 SHOW_SEAT_ID=501 \
   k6 run tests/load/scenario-a.js
 ```
 
@@ -262,7 +262,7 @@ Set `HOLD_TTL_SECONDS=10` on the backend, then:
 
 ```bash
 BASE_URL=https://<deployed-api>
-SHOW_ID=101 SEAT_ID=501 TTL_SECONDS=10 \
+SHOW_ID=101 SHOW_SEAT_ID=501 TTL_SECONDS=10 \
   k6 run tests/load/scenario-b.js
 ```
 

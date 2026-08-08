@@ -10,8 +10,9 @@ version: "3.9"
 # Services reach each other by service name. The backend talks to:
 #   - postgres:5432 via DATABASE_URL
 #   - http://gateway:9000 via GATEWAY_URL
-#   - and exposes its callback URL to the gateway as http://api:3000/api/payments/callback
+#   - and exposes its callback URL to the gateway as http://api:8080/api/payments/callback
 #     (NEVER localhost, because the gateway container cannot reach the host that way).
+#     Port 8080 matches Agent 1's backend default (server.port: ${API_PORT:8080}).
 
 services:
   postgres:
@@ -65,10 +66,12 @@ services:
       GATEWAY_SECRET: ${GATEWAY_SECRET}
       # The gateway must be able to reach the backend by Docker service name.
       # API_PORT must match the exposed port below.
-      API_PORT: ${API_PORT}
-      CALLBACK_URL: http://api:${API_PORT}/api/payments/callback
+      # Default 8080 matches Agent 1's Spring Boot default in
+      # backend/src/main/resources/application.yml (`server.port: ${API_PORT:8080}`).
+      API_PORT: ${API_PORT:-8080}
+      CALLBACK_URL: http://api:${API_PORT:-8080}/api/payments/callback
     ports:
-      - "${API_PORT:-3000}:${API_PORT:-3000}"
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
 
   frontend:
     build:
