@@ -1,9 +1,34 @@
 // Thin API client. Endpoints and shapes are pinned to docs/API_CONTRACT.md.
-// Base URL is injected at build time:
-//   - Docker build: /api  -> nginx in this same image reverse-proxies to api:3000
-//   - Local dev:     http://localhost:3000 (Vite proxy handles /api in dev too)
+//
+// VITE_API_BASE_URL controls the API origin baked at build time:
+//   - Docker build:        "/api"  -> nginx in this same image reverse-proxies /api/*
+//                                     to the backend on the Compose network
+//                                     (same origin, no CORS).
+//   - Local dev (Vite):    "/api"  -> vite.config.js dev-server proxy forwards to
+//                                     http://localhost:3000
+//   - Standalone preview:  "http://localhost:3000"  -> absolute origin
+//
+// Anything that starts with "/" is treated as same-origin and joined with
+// the current page URL (so it works whether the SPA is served from "/" or
+// "/frontend/dist/" via Live Server).
 
-const BASE = (typeof __API_BASE_URL__ !== 'undefined' && __API_BASE_URL__) || '/api';
+const RAW_BASE =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
+  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : '/api');
+
+function buildBase(raw) {
+  if (!raw) return '';
+  // Absolute URL (http://...) — use as-is.
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, '');
+  // Anything else is treated as same-origin: join with current location,
+  // preserving trailing slash semantics for direct concatenation.
+  const here = typeof window !== 'undefined' && window.location
+    ? window.location.origin
+    : '';
+  return (here + raw).replace(/\/$/, '');
+}
+
+const BASE = buildBase(RAW_BASE);
 
 async function jsonFetch(url, options = {}) {
   const res = await fetch(url, {

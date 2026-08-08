@@ -11,6 +11,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // Use a relative base so the built `dist/` works when served from any
+    // subpath (e.g. Live Server at http://127.0.0.1:5500/frontend/dist/).
+    // Inside Docker, nginx still reverse-proxies /api/* on the same origin,
+    // so a relative base is fine in both cases.
+    base: './',
     server: {
       port: 5173,
       proxy: {
