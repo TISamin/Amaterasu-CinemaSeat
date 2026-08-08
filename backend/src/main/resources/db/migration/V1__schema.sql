@@ -1,8 +1,5 @@
 -- Agent 1 ownership.
 -- Source of truth: docs/DATABASE_CONTRACT.md
--- Agent 2 will add payments + payment_events in their own migrations (V3+, per chronological order).
-
-SET TIME ZONE 'UTC';
 
 -- ---------------------------------------------------------------------------
 -- movies
@@ -13,7 +10,7 @@ CREATE TABLE movies (
     description       TEXT,
     duration_minutes  INTEGER        NOT NULL CHECK (duration_minutes > 0),
     poster_url        VARCHAR(1024),
-    created_at        TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at        TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ---------------------------------------------------------------------------
@@ -23,7 +20,7 @@ CREATE TABLE theatres (
     id          BIGSERIAL PRIMARY KEY,
     name        VARCHAR(255) NOT NULL,
     location    VARCHAR(255),
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ---------------------------------------------------------------------------
@@ -33,7 +30,7 @@ CREATE TABLE screens (
     id          BIGSERIAL PRIMARY KEY,
     theatre_id  BIGINT       NOT NULL REFERENCES theatres(id) ON DELETE RESTRICT,
     name        VARCHAR(255) NOT NULL,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_screens_theatre ON screens(theatre_id);
@@ -46,7 +43,7 @@ CREATE TABLE seats (
     screen_id    BIGINT       NOT NULL REFERENCES screens(id) ON DELETE RESTRICT,
     row_label    VARCHAR(8)   NOT NULL,
     seat_number  INTEGER      NOT NULL CHECK (seat_number > 0),
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_seats_screen_row_number UNIQUE (screen_id, row_label, seat_number)
 );
 
@@ -59,9 +56,9 @@ CREATE TABLE shows (
     id          BIGSERIAL PRIMARY KEY,
     movie_id    BIGINT       NOT NULL REFERENCES movies(id)  ON DELETE RESTRICT,
     screen_id   BIGINT       NOT NULL REFERENCES screens(id) ON DELETE RESTRICT,
-    start_time  TIMESTAMPTZ  NOT NULL,
+    start_time  TIMESTAMP    NOT NULL,
     base_price  NUMERIC(10,2) NOT NULL CHECK (base_price >= 0),
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_shows_movie  ON shows(movie_id);
@@ -77,10 +74,10 @@ CREATE TABLE show_seats (
     seat_id          BIGINT        NOT NULL REFERENCES seats(id) ON DELETE RESTRICT,
     status           VARCHAR(16)   NOT NULL,
     held_by          VARCHAR(128),
-    hold_expires_at  TIMESTAMPTZ,
+    hold_expires_at  TIMESTAMP,
     price            NUMERIC(10,2) NOT NULL CHECK (price >= 0),
-    created_at       TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_show_seats_show_seat UNIQUE (show_id, seat_id),
     CONSTRAINT ck_show_seats_status
         CHECK (status IN ('AVAILABLE', 'HELD', 'BOOKED'))
@@ -100,8 +97,8 @@ CREATE TABLE bookings (
     show_seat_id  BIGINT       NOT NULL REFERENCES show_seats(id) ON DELETE RESTRICT,
     user_id       VARCHAR(128) NOT NULL,
     status        VARCHAR(32)  NOT NULL,
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_bookings_booking_ref UNIQUE (booking_ref),
     CONSTRAINT ck_bookings_status
         CHECK (status IN ('PENDING_PAYMENT', 'CONFIRMED', 'PAYMENT_FAILED', 'EXPIRED'))

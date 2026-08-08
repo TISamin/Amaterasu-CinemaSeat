@@ -60,4 +60,11 @@ public class ShowSeat {
     public BigDecimal getPrice() { return price; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    public void setShowId(Long showId) { this.showId = showId; }
+    public void setSeatId(Long seatId) { this.seatId = seatId; }
+    public void setStatus(SeatStatus status) { this.status = status; }
+    public void setHeldBy(String heldBy) { this.heldBy = heldBy; }
+    public void setHoldExpiresAt(Instant holdExpiresAt) { this.holdExpiresAt = holdExpiresAt; }
+    public void setPrice(BigDecimal price) { this.price = price; }
 }

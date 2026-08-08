@@ -84,7 +84,7 @@ services:
     depends_on:
       - api
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-3000}:80"
     # nginx serves the SPA and reverse-proxies /api/* to the backend service.
     # This keeps the browser on the same origin and avoids CORS surprises.
 

@@ -50,7 +50,11 @@ async function jsonFetch(url, options = {}) {
 export const api = {
   base: BASE,
   url(path) {
-    return BASE.replace(/\/$/, '') + path;
+    const cleanBase = BASE.replace(/\/$/, '');
+    if (cleanBase.endsWith('/api') && path.startsWith('/api/')) {
+      return cleanBase.slice(0, -4) + path;
+    }
+    return cleanBase + path;
   },
 
   getMovies() {
