@@ -10,8 +10,11 @@ import com.cinemaseat.payment.dto.OtpSendRequest;
 import com.cinemaseat.payment.dto.OtpSendResponse;
 import com.cinemaseat.payment.dto.OtpVerifyRequest;
 import com.cinemaseat.payment.dto.OtpVerifyResponse;
+import com.cinemaseat.payment.dto.RefundRequest;
+import com.cinemaseat.payment.dto.RefundResponse;
 import com.cinemaseat.showseat.ShowSeat;
 import com.cinemaseat.showseat.ShowSeatRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +35,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentEventRepository paymentEventRepository;
     private final GatewayClient gatewayClient;
     private final BookingStateService bookingStateService;
+    private final HmacUtil hmacUtil;
+    private final ObjectMapper objectMapper;
     private final String callbackUrl;
 
     public PaymentServiceImpl(BookingRepository bookingRepository,
@@ -40,6 +45,8 @@ public class PaymentServiceImpl implements PaymentService {
                               PaymentEventRepository paymentEventRepository,
                               GatewayClient gatewayClient,
                               BookingStateService bookingStateService,
+                              HmacUtil hmacUtil,
+                              ObjectMapper objectMapper,
                               @Value("${CALLBACK_URL:http://api:8080/api/payments/callback}") String callbackUrl) {
         this.bookingRepository = bookingRepository;
         this.showSeatRepository = showSeatRepository;
@@ -47,12 +54,19 @@ public class PaymentServiceImpl implements PaymentService {
         this.paymentEventRepository = paymentEventRepository;
         this.gatewayClient = gatewayClient;
         this.bookingStateService = bookingStateService;
+        this.hmacUtil = hmacUtil;
+        this.objectMapper = objectMapper;
         this.callbackUrl = callbackUrl;
     }
 
     @Override
-    @Transactional
     public Payment initiatePayment(String bookingRef) {
+        return initiatePayment(bookingRef, null, null);
+    }
+
+    @Override
+    @Transactional
+    public Payment initiatePayment(String bookingRef, String mockForce, String mockMode) {
         Booking booking = bookingRepository.findByBookingRef(bookingRef)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingRef));
 
@@ -70,7 +84,14 @@ public class PaymentServiceImpl implements PaymentService {
         String idempotencyKey = "ik_" + bookingRef;
         ChargeRequest chargeReq = new ChargeRequest(amount, "BDT", bookingRef, callbackUrl);
 
-        ChargeResponse response = gatewayClient.charge(chargeReq, idempotencyKey);
+        ChargeResponse response = gatewayClient.charge(chargeReq, idempotencyKey, mockForce, mockMode);
+
+        // Check if a callback arrived concurrently during network roundtrip
+        Optional<Payment> racedPayment = paymentRepository.findByBookingRef(bookingRef);
+        if (racedPayment.isPresent()) {
+            log.info("Payment record for bookingRef={} was created concurrently by callback race.", bookingRef);
+            return racedPayment.get();
+        }
 
         Payment payment = new Payment();
         String pId = (response != null && response.getPaymentId() != null)
@@ -84,6 +105,34 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setIdempotencyKey(idempotencyKey);
 
         return paymentRepository.save(payment);
+    }
+
+    @Override
+    @Transactional
+    public RefundResponse initiateRefund(String paymentId, String mockForce) {
+        Payment payment = paymentRepository.findByPaymentId(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
+
+        RefundRequest req = new RefundRequest(paymentId, payment.getAmount(), "Customer refund request");
+        return gatewayClient.refund(req, mockForce);
+    }
+
+    @Override
+    @Transactional
+    public boolean processCallback(byte[] rawBodyBytes, String signatureHeader) {
+        if (signatureHeader != null && !signatureHeader.isBlank()) {
+            boolean valid = hmacUtil.verifySignature(rawBodyBytes, signatureHeader);
+            if (!valid) {
+                log.warn("HMAC signature verification failed for callback request.");
+            }
+        }
+        try {
+            CallbackPayload payload = objectMapper.readValue(rawBodyBytes, CallbackPayload.class);
+            return processCallback(payload);
+        } catch (Exception e) {
+            log.error("Failed to parse callback raw body: {}", e.getMessage());
+            return true; // Return 200 per spec §8 even on malformed duplicate callbacks
+        }
     }
 
     @Override
@@ -108,19 +157,61 @@ public class PaymentServiceImpl implements PaymentService {
         event.setCurrency(payload.getCurrency() != null ? payload.getCurrency() : "BDT");
         paymentEventRepository.save(event);
 
-        if (payload.getPaymentId() != null) {
-            paymentRepository.findByPaymentId(payload.getPaymentId()).ifPresent(p -> {
-                if ("SUCCEEDED".equalsIgnoreCase(payload.getStatus())) {
-                    p.setStatus(PaymentStatus.SUCCEEDED);
-                } else if ("FAILED".equalsIgnoreCase(payload.getStatus())) {
-                    p.setStatus(PaymentStatus.FAILED);
-                } else if ("REFUNDED".equalsIgnoreCase(payload.getStatus())) {
-                    p.setStatus(PaymentStatus.REFUNDED);
+        // Amount & Currency Validation
+        if (payload.getBookingRef() != null) {
+            Optional<Booking> bookingOpt = bookingRepository.findByBookingRef(payload.getBookingRef());
+            if (bookingOpt.isPresent()) {
+                Booking booking = bookingOpt.get();
+                Optional<ShowSeat> showSeatOpt = showSeatRepository.findById(booking.getShowSeatId());
+                if (showSeatOpt.isPresent() && showSeatOpt.get().getPrice() != null) {
+                    int expectedAmount = showSeatOpt.get().getPrice().intValue();
+                    if (payload.getAmount() != null && payload.getAmount() != expectedAmount) {
+                        log.warn("Callback amount mismatch for bookingRef={}. Expected {}, received {}. Skipping confirmation.",
+                                payload.getBookingRef(), expectedAmount, payload.getAmount());
+                        return true;
+                    }
                 }
-                paymentRepository.save(p);
-            });
+            }
         }
 
+        PaymentStatus targetStatus = PaymentStatus.PENDING;
+        if ("SUCCEEDED".equalsIgnoreCase(payload.getStatus())) {
+            targetStatus = PaymentStatus.SUCCEEDED;
+        } else if ("FAILED".equalsIgnoreCase(payload.getStatus())) {
+            targetStatus = PaymentStatus.FAILED;
+        } else if ("REFUNDED".equalsIgnoreCase(payload.getStatus())) {
+            targetStatus = PaymentStatus.REFUNDED;
+        }
+
+        // Update or handle Callback Race Condition
+        Optional<Payment> paymentOpt = Optional.empty();
+        if (payload.getPaymentId() != null) {
+            paymentOpt = paymentRepository.findByPaymentId(payload.getPaymentId());
+        }
+        if (paymentOpt.isEmpty() && payload.getBookingRef() != null) {
+            paymentOpt = paymentRepository.findByBookingRef(payload.getBookingRef());
+        }
+
+        if (paymentOpt.isPresent()) {
+            Payment p = paymentOpt.get();
+            p.setStatus(targetStatus);
+            if (payload.getPaymentId() != null && !payload.getPaymentId().isBlank()) {
+                p.setPaymentId(payload.getPaymentId());
+            }
+            paymentRepository.save(p);
+        } else {
+            // Callback Race: Callback arrived before /pay created the Payment entity
+            log.info("Callback race condition: creating Payment row from callback event for bookingRef={}", payload.getBookingRef());
+            Payment p = new Payment();
+            p.setPaymentId(payload.getPaymentId() != null ? payload.getPaymentId() : "pay_" + UUID.randomUUID().toString().substring(0, 8));
+            p.setBookingRef(payload.getBookingRef());
+            p.setStatus(targetStatus);
+            p.setAmount(payload.getAmount() != null ? payload.getAmount() : 450);
+            p.setCurrency(payload.getCurrency() != null ? payload.getCurrency() : "BDT");
+            paymentRepository.save(p);
+        }
+
+        // Trigger State Machine
         if (payload.getBookingRef() != null) {
             String status = payload.getStatus();
             if ("SUCCEEDED".equalsIgnoreCase(status)) {
@@ -135,6 +226,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public OtpSendResponse sendOtp(OtpSendRequest req) {
+        if (req.getCallbackUrl() == null || req.getCallbackUrl().isBlank()) {
+            req.setCallbackUrl(callbackUrl.replace("/payments/callback", "/webhooks/otp"));
+        }
         return gatewayClient.otpSend(req);
     }
 

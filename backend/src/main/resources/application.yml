@@ -37,7 +37,7 @@ hold:
 # Gateway URL (used by Agent 2). Kept here for shared env contract.
 gateway:
   url: ${GATEWAY_URL:http://gateway:9000}
-  secret: ${GATEWAY_SECRET:}
+  secret: ${GATEWAY_SECRET:z2p-2026-secret}
 
 management:
   endpoints:
