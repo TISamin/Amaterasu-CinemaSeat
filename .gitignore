@@ -1,0 +1,25 @@
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Secrets ---
+.env
+.env.local
+
+# --- Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/npm-debug.log*
+
+# --- Backend (Agent 1/2) ---
+backend/target/
+backend/.mvn/
+backend/mvnw
+backend/mvnw.cmd
+
+# --- Docker ---
+.puku/
