@@ -1,6 +1,6 @@
 package com.cinemaseat.web;
 
-import com.cinemaseat.movie.MovieRepository;
+import com.cinemaseat.movie.MovieService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,14 +11,14 @@ import java.util.List;
 @RequestMapping("/api/movies")
 public class MovieController {
 
-    private final MovieRepository movies;
+    private final MovieService movieService;
 
-    public MovieController(MovieRepository movies) {
-        this.movies = movies;
+    public MovieController(MovieService movieService) {
+        this.movieService = movieService;
     }
 
     @GetMapping
     public List<MovieDto> listMovies() {
-        return movies.findAll().stream().map(MovieDto::from).toList();
+        return movieService.listAll();
     }
 }
