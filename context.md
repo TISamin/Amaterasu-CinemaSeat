@@ -227,3 +227,71 @@ public ResponseEntity<?> onCallback(@RequestBody GatewayPayload p) {
 - Compile: ✅ verified on host
 - Unit tests: ✅ 6/6 green on host
 - Integration tests (100-concurrent, lazy-expire, end-to-end): ⚠️  written, not yet executed (need Docker / Postgres) — Agent 3's responsibility in CI
+---
+
+## 10. Agent 2 Handoff (payment module)
+
+**Goal**: Payment lifecycle correctness. Database, not Java, protects idempotency.
+
+### What was built
+
+| Layer | Files | Purpose |
+|---|---|---|
+| Migration | `db/migration/V3__payments.sql` | `payments` + `payment_events` tables; UNIQUE(payment_id), UNIQUE(event_id), FK booking_ref, CHECK status, indexes |
+| Domain | `payment/Payment.java`, `PaymentEvent.java`, `PaymentStatus.java` | JPA entities, enum |
+| Repos | `payment/PaymentRepository.java`, `PaymentEventRepository.java` | `findByBookingRef`, `findByPaymentId`, `markTerminalIfPending` (gated UPDATE), `findByEventId` |
+| Gateway | `payment/gateway/GatewayClient.java` (interface), `RestGatewayClient.java` (impl), 6 DTOs, `GatewayException` | `charge` + OTP forwarding via Spring `RestClient` |
+| Service | `payment/PaymentService.java` | `pay()` + `handleCallback()` + inner `GatewayCallbackPayload` record |
+| Web | `payment/web/PaymentController.java`, `PaymentCallbackController.java`, `OtpController.java`, `PaymentExceptionHandler.java`, 4 DTOs | REST surface + scoped `@RestControllerAdvice` |
+| Config | `config/GatewayProperties.java` | `gateway.url`, `gateway.secret`, `gateway.timeout-ms` |
+
+### Idempotency strategy
+
+Two layers:
+
+1. **At the service layer** — `PaymentService.handleCallback()`:
+   - Fast-path: `events.findByEventId(payload.eventId())` — if hit, return.
+   - Otherwise `INSERT` into `payment_events` (UNIQUE(event_id) is the canonical guard). Catch `DataIntegrityViolationException` for race-loser.
+
+2. **At the data layer** — `PaymentRepository.markTerminalIfPending(paymentId, newStatus)` — conditional UPDATE filtered on `status='PENDING'`. So `SUCCEEDED` followed by `REFUNDED` updates the row; `SUCCEEDED` twice is a no-op.
+
+### Endpoint additions
+
+| Method | Path | Status | Notes |
+|---|---|---|---|
+| POST | `/api/bookings/{bookingRef}/pay` | 202 | Idempotent re-entry returns existing row |
+| POST | `/api/payments/callback` | 200 (always) | Defensive parsing; bad payload → 200 (don't poison gateway retry) |
+| POST | `/api/otp/send` | 200 | Best-effort gateway call; returns `{sent: bool}` |
+| POST | `/api/otp/verify` | 200 | Best-effort; returns `{verified: bool}` |
+
+### Configuration
+
+| Property | Default | Notes |
+|---|---|---|
+| `gateway.url` | `http://gateway:9000` | Docker service name. Local dev override: `http://localhost:9000` |
+| `gateway.secret` | (empty) | If set, sent as `X-Gateway-Secret` header |
+| `gateway.timeout-ms` | `3000` | Read by `GatewayProperties`, applied to RestClient |
+
+### Decisions Made In This Session
+
+| # | Decision | Chosen | Why |
+|---|---|---|---|
+| D6 | Gateway abstraction | `GatewayClient` interface + `RestGatewayClient` impl | Mockito couldn't mock the original concrete class via inline mocker; interface sidesteps it AND is cleaner design |
+| D7 | Mock for `ShowSeat` | `ReflectionTestUtils.setField(new ShowSeat(), "price", X)` | Entity has no setters; `mock(ShowSeat.class)` triggers same ByteBuddy issue as `GatewayClient` did |
+| D8 | Callback error policy | Always 200, even on bad payload | Avoid gateway retry loops / poison messages; log at WARN, never escalate |
+| D9 | REFUNDED callback | Update payment row only; do NOT touch booking | STATE_MACHINE §13 explicit: refunds don't release seats in MVP |
+
+### Coordination Notes For Agent 3
+
+- **Backend endpoint table** is now `/api/bookings/{ref}/pay`, `/api/payments/callback`, `/api/otp/send`, `/api/otp/verify`. Add these to your frontend API client.
+- **Gateway URL**: in Docker compose, set `GATEWAY_URL=http://gateway:9000`. In local dev, override with `GATEWAY_URL=http://localhost:9000`.
+- **Callback URL inside Docker**: must be reachable from the `gateway` container. If your compose puts the backend on a different hostname (e.g. `api` instead of `backend`), adjust `callbackUrl` in `PaymentService.pay()`. Currently hardcoded to `/api/payments/callback` (relative path).
+- **No new migrations** beyond V3 — Agent 3 can extend with V4 if needed (e.g. refunds table).
+- **Unit test growth**: `PaymentServiceTest` adds 10 tests, bringing total to **16 unit tests** (5 + 10 + 1). All run without Docker.
+
+### Final status
+
+- Code: ✅ on disk + compile clean
+- Unit tests: ✅ 16/16 green on host (`PaymentServiceTest` 10/10 + `BookingStateServiceTest` 5/5 + `ShowSeatConcurrencyUnitTest` 1/1)
+- Integration tests: still need Docker / Postgres — Agent 3's CI responsibility
+- Branch: TBD (Agent 2 did not commit/push in this session — awaiting merge-of-Agent-1 first per §7)
