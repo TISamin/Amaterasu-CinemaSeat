@@ -60,4 +60,13 @@ public class ShowSeat {
     public BigDecimal getPrice() { return price; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    /** Test-only convenience constructor for building stub rows. */
+    public static ShowSeat forTest(Long id, BigDecimal price) {
+        ShowSeat s = new ShowSeat();
+        s.id = id;
+        s.price = price;
+        s.status = SeatStatus.AVAILABLE;
+        return s;
+    }
 }

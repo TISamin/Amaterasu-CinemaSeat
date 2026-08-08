@@ -1,25 +1,9 @@
-# --- OS / editor ---
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-
-# --- Secrets ---
+node_modules
+dist
+.vite
 .env
 .env.local
+*.log
 
-# --- Frontend ---
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/npm-debug.log*
-
-# --- Backend (Agent 1/2) ---
-backend/target/
-backend/.mvn/
-backend/mvnw
-backend/mvnw.cmd
-
-# --- Docker ---
+# Puku editor cache (embeds DB + WAL files lock on Windows).
 .puku/
