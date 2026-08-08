@@ -3,7 +3,7 @@ package com.cinemaseat.web;
 import com.cinemaseat.booking.Booking;
 import com.cinemaseat.booking.BookingRepository;
 import com.cinemaseat.seat.SeatRepository;
-import com.cinemaseat.show.ShowSeatRepository;
+import com.cinemaseat.showseat.ShowSeatRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;

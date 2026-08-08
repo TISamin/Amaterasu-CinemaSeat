@@ -3,8 +3,10 @@ package com.cinemaseat.show;
 import com.cinemaseat.CinemaSeatApplication;
 import com.cinemaseat.booking.HoldResult;
 import com.cinemaseat.booking.SeatHoldService;
+import com.cinemaseat.seat.Seat;
+import com.cinemaseat.seat.SeatRepository;
 import com.cinemaseat.showseat.SeatStatus;
-import com.cinemaseat.showseat.SeatDto;
+import com.cinemaseat.web.SeatDto;
 import com.cinemaseat.showseat.ShowSeatRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,7 @@ class SeatMapLazyExpirationIT {
     @Autowired SeatHoldService seatHoldService;
     @Autowired ShowSeatRepository showSeats;
     @Autowired ShowRepository shows;
+    @Autowired SeatRepository seats;
     @Autowired JdbcTemplate jdbc;
 
     @Test
@@ -70,7 +73,8 @@ class SeatMapLazyExpirationIT {
                             && s.getHoldExpiresAt() != null
                             && s.getHoldExpiresAt().isBefore(Instant.now()))
                             ? SeatStatus.AVAILABLE : s.getStatus();
-                    return new SeatDto(s.getId(), s.getSeatId(), effective);
+                    Seat seatDef = seats.findById(s.getSeatId()).orElseThrow();
+                    return new SeatDto(s.getId(), s.getSeatId(), seatDef.getRowLabel(), seatDef.getSeatNumber(), s.getPrice(), effective);
                 })
                 .toList();
 
